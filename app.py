@@ -1,7 +1,9 @@
-from flask import Flask, render_template
-from database.db import get_db, init_db, seed_db
+import os
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from database.db import get_db, init_db, seed_db, create_user, get_user_by_email, get_user_by_id, verify_password
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
 
 
 # ------------------------------------------------------------------ #
@@ -13,13 +15,68 @@ def landing():
     return render_template("landing.html")
 
 
-@app.route("/register")
+@app.route("/register", methods=["GET", "POST"])
 def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+
+        # Validation
+        if not name or not email or not password:
+            flash("All fields are required.", "error")
+            return render_template("register.html")
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("register.html")
+
+        # Check if email already exists
+        existing_user = get_user_by_email(email)
+        if existing_user:
+            flash("An account with this email already exists.", "error")
+            return render_template("register.html")
+
+        # Create user
+        try:
+            create_user(name, email, password)
+            flash("Account created successfully! Please sign in.", "success")
+            return redirect(url_for("login"))
+        except Exception as e:
+            flash("An error occurred. Please try again.", "error")
+            return render_template("register.html")
+
     return render_template("register.html")
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+
+        # Validation
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("login.html")
+
+        # Check if user exists
+        user = get_user_by_email(email)
+        if not user:
+            flash("Invalid email or password.", "error")
+            return render_template("login.html")
+
+        # Verify password
+        if not verify_password(password, user["password_hash"]):
+            flash("Invalid email or password.", "error")
+            return render_template("login.html")
+
+        # Create session
+        session["user_id"] = user["id"]
+        session["user_name"] = user["name"]
+        flash("Welcome back, " + user["name"] + "!", "success")
+        return redirect(url_for("profile"))
+
     return render_template("login.html")
 
 

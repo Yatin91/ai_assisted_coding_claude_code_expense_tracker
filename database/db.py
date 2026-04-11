@@ -96,3 +96,71 @@ def seed_db():
 
     conn.commit()
     conn.close()
+
+
+def create_user(name, email, password):
+    """
+    Creates a new user with the given name, email, and password.
+    Returns the user ID on success.
+    Raises sqlite3.IntegrityError if email already exists.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    password_hash = generate_password_hash(password)
+    cursor.execute("""
+        INSERT INTO users (name, email, password_hash)
+        VALUES (?, ?, ?)
+    """, (name, email, password_hash))
+
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    return user_id
+
+
+def get_user_by_email(email):
+    """
+    Fetches a user by email address.
+    Returns a dict-like Row object or None if not found.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, name, email, password_hash, created_at
+        FROM users
+        WHERE email = ?
+    """, (email,))
+
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def get_user_by_id(user_id):
+    """
+    Fetches a user by ID.
+    Returns a dict-like Row object or None if not found.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, name, email, created_at
+        FROM users
+        WHERE id = ?
+    """, (user_id,))
+
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def verify_password(password, password_hash):
+    """
+    Verifies a password against a stored hash.
+    Returns True if valid, False otherwise.
+    """
+    from werkzeug.security import check_password_hash
+    return check_password_hash(password_hash, password)
