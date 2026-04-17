@@ -96,3 +96,205 @@ def seed_db():
 
     conn.commit()
     conn.close()
+
+
+def create_user(name, email, password):
+    """
+    Creates a new user with the given name, email, and password.
+    Returns the user ID on success.
+    Raises sqlite3.IntegrityError if email already exists.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    password_hash = generate_password_hash(password)
+    cursor.execute("""
+        INSERT INTO users (name, email, password_hash)
+        VALUES (?, ?, ?)
+    """, (name, email, password_hash))
+
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    return user_id
+
+
+def get_user_by_email(email):
+    """
+    Fetches a user by email address.
+    Returns a dict-like Row object or None if not found.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, name, email, password_hash, created_at
+        FROM users
+        WHERE email = ?
+    """, (email,))
+
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def get_user_by_id(user_id):
+    """
+    Fetches a user by ID.
+    Returns a dict-like Row object or None if not found.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, name, email, created_at
+        FROM users
+        WHERE id = ?
+    """, (user_id,))
+
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+
+def verify_password(password, password_hash):
+    """
+    Verifies a password against a stored hash.
+    Returns True if valid, False otherwise.
+    """
+    from werkzeug.security import check_password_hash
+    return check_password_hash(password_hash, password)
+
+
+def get_expense_stats(user_id):
+    """
+    Fetches expense statistics for a user: total expenses, transaction count.
+    Returns a dict with total_expenses and transaction_count.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            COALESCE(SUM(amount), 0) as total_expenses,
+            COUNT(*) as transaction_count
+        FROM expenses
+        WHERE user_id = ?
+    """, (user_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return {
+        "total_expenses": row["total_expenses"],
+        "transaction_count": row["transaction_count"]
+    }
+
+
+def get_top_category(user_id):
+    """
+    Fetches the top spending category for a user.
+    Returns a dict with category name and amount.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT category, SUM(amount) as amount
+        FROM expenses
+        WHERE user_id = ?
+        GROUP BY category
+        ORDER BY amount DESC
+        LIMIT 1
+    """, (user_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return {"name": row["category"], "amount": row["amount"]}
+    return None
+
+
+def get_recent_transactions(user_id, limit=5):
+    """
+    Fetches the most recent transactions for a user.
+    Returns a list of dicts with date, description, category, and amount.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT date, description, category, amount
+        FROM expenses
+        WHERE user_id = ?
+        ORDER BY date DESC, id DESC
+        LIMIT ?
+    """, (user_id, limit))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "date": row["date"],
+            "description": row["description"],
+            "category": row["category"],
+            "amount": row["amount"]
+        }
+        for row in rows
+    ]
+
+
+def get_category_breakdown(user_id):
+    """
+    Fetches spending breakdown by category for a user.
+    Returns a list of dicts with name, amount, percentage, and color.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get total expenses
+    cursor.execute("""
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM expenses
+        WHERE user_id = ?
+    """, (user_id,))
+    total = cursor.fetchone()["total"]
+
+    if total == 0:
+        conn.close()
+        return []
+
+    # Get category breakdown
+    cursor.execute("""
+        SELECT category, SUM(amount) as amount
+        FROM expenses
+        WHERE user_id = ?
+        GROUP BY category
+        ORDER BY amount DESC
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Category colors matching the CSS badges
+    category_colors = {
+        "Food": "#f59e0b",
+        "Transport": "#3b82f6",
+        "Bills": "#ef4444",
+        "Health": "#10b981",
+        "Entertainment": "#8b5cf6",
+        "Shopping": "#ec4899",
+        "Other": "#6b7280"
+    }
+
+    return [
+        {
+            "name": row["category"],
+            "amount": row["amount"],
+            "percentage": round((row["amount"] / total) * 100, 1),
+            "color": category_colors.get(row["category"], "#6b7280")
+        }
+        for row in rows
+    ]
