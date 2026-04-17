@@ -1,6 +1,10 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from database.db import get_db, init_db, seed_db, create_user, get_user_by_email, get_user_by_id, verify_password
+from database.db import (
+    get_db, init_db, seed_db, create_user, get_user_by_email, get_user_by_id,
+    verify_password, get_expense_stats, get_top_category, get_recent_transactions,
+    get_category_breakdown
+)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
@@ -93,7 +97,33 @@ def logout():
 
 @app.route("/profile")
 def profile():
-    return "Profile page — coming in Step 4"
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in to view your profile.", "error")
+        return redirect(url_for("login"))
+
+    user = get_user_by_id(user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("login"))
+
+    stats = get_expense_stats(user_id)
+    top_cat = get_top_category(user_id)
+    recent_tx = get_recent_transactions(user_id, limit=5)
+    category_breakdown = get_category_breakdown(user_id)
+
+    member_since = user["created_at"][:10] if user["created_at"] else "N/A"
+
+    return render_template("profile.html",
+        user=user,
+        member_since=member_since,
+        total_expenses=stats["total_expenses"],
+        transaction_count=stats["transaction_count"],
+        top_category=top_cat["name"] if top_cat else None,
+        top_category_amount=f"₹{top_cat['amount']:.2f}" if top_cat else None,
+        recent_transactions=recent_tx,
+        category_breakdown=category_breakdown
+    )
 
 
 @app.route("/expenses/add")
