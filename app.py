@@ -1,6 +1,8 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from datetime import date as date_cls, datetime, timedelta
+from flask import Flask, abort, render_template, request, redirect, url_for, session, flash
 from database.db import get_db, init_db, seed_db, create_user, get_user_by_email, get_user_by_id, verify_password
+from database.queries import get_user_profile, get_summary_stats, get_recent_transactions, get_category_breakdown
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
@@ -86,12 +88,106 @@ def login():
 
 @app.route("/logout")
 def logout():
-    return "Logout — coming in Step 3"
+    session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("landing"))
 
 
 @app.route("/profile")
 def profile():
-    return "Profile page — coming in Step 4"
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    # --- Date param validation ---
+    raw_from = request.args.get("date_from", "").strip()
+    raw_to   = request.args.get("date_to",   "").strip()
+
+    date_from = date_to = None
+    if raw_from:
+        try:
+            datetime.strptime(raw_from, "%Y-%m-%d")
+            date_from = raw_from
+        except ValueError:
+            pass  # silently treat malformed value as absent
+    if raw_to:
+        try:
+            datetime.strptime(raw_to, "%Y-%m-%d")
+            date_to = raw_to
+        except ValueError:
+            pass
+
+    if (date_from is None) != (date_to is None):
+        flash("Please provide both a start date and an end date.", "error")
+        date_from = date_to = None
+    elif date_from and date_to and date_from > date_to:
+        flash("Start date must be before end date.", "error")
+        date_from = date_to = None
+
+    # --- Preset date ranges (computed here, not in template) ---
+    today = date_cls.today()
+    today_iso = today.isoformat()
+
+    def _months_ago(n):
+        month = today.month - n
+        year = today.year + month // 12
+        month = month % 12 or 12
+        if month > today.month:
+            year -= 1
+        return date_cls(year, month, today.day).isoformat()
+
+    presets = {
+        "this_month": {
+            "label": "This Month",
+            "date_from": date_cls(today.year, today.month, 1).isoformat(),
+            "date_to": today_iso,
+        },
+        "last_3_months": {
+            "label": "Last 3 Months",
+            "date_from": _months_ago(3),
+            "date_to": today_iso,
+        },
+        "last_6_months": {
+            "label": "Last 6 Months",
+            "date_from": _months_ago(6),
+            "date_to": today_iso,
+        },
+        "all_time": {
+            "label": "All Time",
+            "date_from": None,
+            "date_to": None,
+        },
+    }
+
+    # Determine active preset for visual highlight
+    active_preset = None
+    if date_from is None and date_to is None:
+        active_preset = "all_time"
+    else:
+        for key, p in presets.items():
+            if p["date_from"] == date_from and p["date_to"] == date_to:
+                active_preset = key
+                break
+
+    # --- Fetch real data ---
+    user = get_user_profile(user_id)
+    if not user:
+        abort(404)
+
+    stats        = get_summary_stats(user_id, date_from, date_to)
+    transactions = get_recent_transactions(user_id, limit=10, date_from=date_from, date_to=date_to)
+    categories   = get_category_breakdown(user_id, date_from, date_to)
+
+    return render_template("profile.html",
+        user=user,
+        stats=stats,
+        transactions=transactions,
+        categories=categories,
+        presets=presets,
+        active_preset=active_preset,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @app.route("/expenses/add")
