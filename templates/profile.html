@@ -3,116 +3,106 @@
 {% block title %}Profile — Spendly{% endblock %}
 
 {% block content %}
+<section class="profile-section">
+    <div class="profile-container">
 
-<div class="profile-container">
-    <!-- User Info Card -->
-    <div class="profile-header-card">
-        <div class="profile-avatar">
-            <span>{{ user.name[0].upper() }}</span>
-        </div>
-        <div class="profile-info">
-            <h1 class="profile-name">{{ user.name }}</h1>
-            <p class="profile-email">{{ user.email }}</p>
-            <p class="profile-member">Member since {{ member_since }}</p>
-        </div>
-        <a href="{{ url_for('logout') }}" class="btn-logout">Log out</a>
-    </div>
-
-    <!-- Summary Stats -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i data-lucide="wallet"></i>
-            </div>
-            <span class="stat-label">Total Expenses</span>
-            <span class="stat-value">₹{{ "%.2f"|format(total_expenses) }}</span>
-            <span class="stat-subtitle">All time</span>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i data-lucide="receipt"></i>
-            </div>
-            <span class="stat-label">Transactions</span>
-            <span class="stat-value">{{ transaction_count }}</span>
-            <span class="stat-subtitle">Total count</span>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i data-lucide="trending-up"></i>
-            </div>
-            <span class="stat-label">Top Category</span>
-            <span class="stat-value category-name">{{ top_category or "—" }}</span>
-            <span class="stat-subtitle">{{ top_category_amount or "—" }}</span>
-        </div>
-    </div>
-
-    <!-- Main Content Grid -->
-    <div class="profile-grid">
-        <!-- Recent Transactions -->
-        <div class="card transactions-card">
-            <div class="card-header">
-                <h2 class="card-title">Recent Transactions</h2>
-                <a href="#" class="btn-link">View all</a>
-            </div>
-            <div class="table-container">
-                <table class="tx-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th class="text-right">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if recent_transactions %}
-                            {% for tx in recent_transactions %}
-                            <tr>
-                                <td class="tx-date">{{ tx.date }}</td>
-                                <td class="tx-desc">{{ tx.description }}</td>
-                                <td><span class="badge badge-{{ tx.category|lower }}">{{ tx.category }}</span></td>
-                                <td class="tx-amount">−₹{{ "%.2f"|format(tx.amount) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="4" class="empty-state">No transactions yet</td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+        <!-- User Info Card -->
+        <div class="user-info-card">
+            <div class="user-avatar">{{ user.name[0]|upper }}</div>
+            <div class="user-details">
+                <h2 class="user-name">{{ user.name }}</h2>
+                <p class="user-email">{{ user.email }}</p>
+                <span class="member-since">Member since {{ user.member_since }}</span>
             </div>
         </div>
 
-        <!-- Spending by Category -->
-        <div class="card categories-card">
-            <div class="card-header">
-                <h2 class="card-title">Spending by Category</h2>
+        <!-- Date Filter Bar -->
+        <div class="filter-bar">
+            <div class="filter-presets">
+                {% for key, preset in presets.items() %}
+                    {% if preset.date_from %}
+                        <a href="{{ url_for('profile', date_from=preset.date_from, date_to=preset.date_to) }}"
+                           class="filter-btn{% if active_preset == key %} filter-btn--active{% endif %}">
+                            {{ preset.label }}
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('profile') }}"
+                           class="filter-btn{% if active_preset == key %} filter-btn--active{% endif %}">
+                            {{ preset.label }}
+                        </a>
+                    {% endif %}
+                {% endfor %}
             </div>
-            <div class="category-bars">
-                {% if category_breakdown %}
-                    {% for cat in category_breakdown %}
-                    <div class="category-row">
-                        <div class="category-info">
-                            <span class="category-name">{{ cat.name }}</span>
-                            <span class="category-amount">₹{{ "%.2f"|format(cat.amount) }}</span>
-                        </div>
-                        <div class="category-bar-track">
-                            <div class="category-bar" style="width: {{ cat.percentage }}%; background: {{ cat.color }}"></div>
-                        </div>
-                    </div>
+            <form method="GET" action="{{ url_for('profile') }}" class="filter-custom">
+                <input type="date" name="date_from" class="form-input filter-date"
+                       value="{{ date_from or '' }}">
+                <span class="filter-sep">—</span>
+                <input type="date" name="date_to" class="form-input filter-date"
+                       value="{{ date_to or '' }}">
+                <button type="submit" class="btn-primary filter-apply">Apply</button>
+            </form>
+        </div>
+
+        <!-- Summary Stats Row -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <span class="stat-label">Total Spent</span>
+                <span class="stat-value">₹{{ "%.2f"|format(stats.total_spent) }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Transactions</span>
+                <span class="stat-value">{{ stats.transaction_count }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Top Category</span>
+                <span class="stat-value">{{ stats.top_category }}</span>
+            </div>
+        </div>
+
+        <!-- Transaction History Table -->
+        <div class="transactions-card">
+            <h3 class="card-heading">Recent Transactions</h3>
+            <table class="transactions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for txn in transactions %}
+                    <tr>
+                        <td>{{ txn.date }}</td>
+                        <td>{{ txn.description }}</td>
+                        <td><span class="category-badge category-{{ txn.category|lower }}">{{ txn.category }}</span></td>
+                        <td class="amount">₹{{ "%.2f"|format(txn.amount) }}</td>
+                    </tr>
                     {% endfor %}
-                {% else %}
-                    <p class="empty-state">No spending data yet</p>
-                {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="categories-card">
+            <h3 class="card-heading">Category Breakdown</h3>
+            <div class="category-list">
+                {% for cat in categories %}
+                <div class="category-row">
+                    <div class="category-info">
+                        <span class="category-name">{{ cat.name }}</span>
+                        <span class="category-amount">₹{{ "%.2f"|format(cat.amount) }}</span>
+                    </div>
+                    <div class="category-bar-track">
+                        <div class="category-bar" style="width: {{ cat.pct }}%"></div>
+                    </div>
+                    <span class="category-percentage">{{ cat.pct }}%</span>
+                </div>
+                {% endfor %}
             </div>
         </div>
+
     </div>
-</div>
-
-<script src="https://unpkg.com/lucide@latest"></script>
-<script>
-    lucide.createIcons();
-</script>
-
+</section>
 {% endblock %}
