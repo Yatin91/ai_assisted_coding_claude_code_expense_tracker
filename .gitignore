@@ -1,5 +1,8 @@
 venv/
 expense_tracker.db
+*.db
+cookies.txt
+agents-observe/
 __pycache__/
 *.pyc
 *.pyo
