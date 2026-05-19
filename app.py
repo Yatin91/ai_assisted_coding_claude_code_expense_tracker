@@ -26,6 +26,8 @@ from database.queries import (
     get_recent_transactions,
     get_category_breakdown,
     insert_expense,
+    get_expense_by_id,
+    update_expense,
 )
 
 EXPENSE_CATEGORIES = [
@@ -288,9 +290,80 @@ def add_expense():
     )
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+
+    expense = get_expense_by_id(id)
+    if not expense or expense["user_id"] != user_id:
+        abort(404)
+
+    if request.method == "POST":
+        amount_raw = request.form.get("amount", "").strip()
+        category = request.form.get("category", "")
+        date_str = request.form.get("date", "").strip()
+        description_raw = request.form.get("description", "").strip()
+        description = description_raw or None
+
+        form_values = {
+            "amount": amount_raw,
+            "category": category,
+            "date": date_str,
+            "description": description_raw,
+        }
+
+        try:
+            amount = float(amount_raw)
+            if not math.isfinite(amount) or amount <= 0:
+                raise ValueError
+        except ValueError:
+            flash("Amount must be a positive number.", "error")
+            return render_template(
+                "edit_expense.html",
+                categories=EXPENSE_CATEGORIES,
+                form=form_values,
+                expense=expense,
+            )
+
+        if category not in EXPENSE_CATEGORIES:
+            flash("Please select a valid category.", "error")
+            return render_template(
+                "edit_expense.html",
+                categories=EXPENSE_CATEGORIES,
+                form=form_values,
+                expense=expense,
+            )
+
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            flash("Please provide a valid date (YYYY-MM-DD).", "error")
+            return render_template(
+                "edit_expense.html",
+                categories=EXPENSE_CATEGORIES,
+                form=form_values,
+                expense=expense,
+            )
+
+        update_expense(id, user_id, amount, category, date_str, description)
+        flash("Expense updated successfully.", "success")
+        return redirect(url_for("profile"))
+
+    form_values = {
+        "amount": f"{expense['amount']:.2f}",
+        "category": expense["category"],
+        "date": expense["date"],
+        "description": expense["description"] or "",
+    }
+    return render_template(
+        "edit_expense.html",
+        categories=EXPENSE_CATEGORIES,
+        form=form_values,
+        expense=expense,
+    )
 
 
 @app.route("/expenses/<int:id>/delete")

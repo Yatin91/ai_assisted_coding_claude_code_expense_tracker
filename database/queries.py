@@ -23,6 +23,63 @@ def insert_expense(user_id, amount, category, date, description):
     return expense_id
 
 
+def get_expense_by_id(expense_id):
+    """
+    Fetch a single expense row by id.
+    Returns a dict with id, user_id, amount, category, date, description, created_at,
+    or None if no row exists.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, user_id, amount, category, date, description, created_at
+        FROM expenses
+        WHERE id = ?
+    """,
+        (expense_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "amount": row["amount"],
+        "category": row["category"],
+        "date": row["date"],
+        "description": row["description"],
+        "created_at": row["created_at"],
+    }
+
+
+def update_expense(expense_id, user_id, amount, category, date, description):
+    """
+    Update an existing expense owned by `user_id`.
+    The user_id guard in the WHERE clause is defence-in-depth — the route also
+    performs an ownership check before calling this.
+    `description` may be None (stored as NULL).
+    Returns the number of rows updated (0 if the row doesn't exist or isn't owned).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE expenses
+           SET amount = ?, category = ?, date = ?, description = ?
+         WHERE id = ? AND user_id = ?
+    """,
+        (amount, category, date, description, expense_id, user_id),
+    )
+    conn.commit()
+    rowcount = cursor.rowcount
+    conn.close()
+    return rowcount
+
+
 def get_user_profile(user_id):
     """
     Fetch user profile data by ID.
@@ -138,7 +195,7 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
 
     cursor.execute(
         f"""
-        SELECT date, description, category, amount
+        SELECT id, date, description, category, amount
         FROM expenses
         WHERE user_id = ? {date_filter}
         ORDER BY date DESC, created_at DESC
@@ -151,6 +208,7 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
     for row in cursor.fetchall():
         transactions.append(
             {
+                "id": row["id"],
                 "date": row["date"],
                 "description": row["description"],
                 "category": row["category"],
