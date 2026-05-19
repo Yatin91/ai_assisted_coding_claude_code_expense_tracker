@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -m black $CLAUDE_TOOL_INPUT_FILE_PATH 2>/dev/null || true"
+            "command": "python hooks/scripts/format_with_black.py"
           }
         ]
       }

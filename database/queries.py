@@ -2,6 +2,27 @@ import sqlite3
 from database.db import get_db
 
 
+def insert_expense(user_id, amount, category, date, description):
+    """
+    Inserts a new expense for a user.
+    Returns the id of the newly inserted row.
+    `description` may be None (stored as NULL).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO expenses (user_id, amount, category, date, description)
+        VALUES (?, ?, ?, ?, ?)
+    """,
+        (user_id, amount, category, date, description),
+    )
+    conn.commit()
+    expense_id = cursor.lastrowid
+    conn.close()
+    return expense_id
+
+
 def get_user_profile(user_id):
     """
     Fetch user profile data by ID.
@@ -10,11 +31,14 @@ def get_user_profile(user_id):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT id, name, email, created_at
         FROM users
         WHERE id = ?
-    """, (user_id,))
+    """,
+        (user_id,),
+    )
 
     row = cursor.fetchone()
     conn.close()
@@ -29,16 +53,13 @@ def get_user_profile(user_id):
         date_part = row["created_at"].split()[0]  # "2026-04-01"
         try:
             from datetime import datetime
+
             dt = datetime.strptime(date_part, "%Y-%m-%d")
             member_since = dt.strftime("%B %Y")  # "April 2026"
         except (ValueError, IndexError):
             member_since = "Unknown"
 
-    return {
-        "name": row["name"],
-        "email": row["email"],
-        "member_since": member_since
-    }
+    return {"name": row["name"], "email": row["email"], "member_since": member_since}
 
 
 def get_summary_stats(user_id, date_from=None, date_to=None):
@@ -58,27 +79,33 @@ def get_summary_stats(user_id, date_from=None, date_to=None):
         params_base = [user_id, date_from, date_to]
 
     # Get total spent and transaction count
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT
             COALESCE(SUM(amount), 0) as total_spent,
             COUNT(*) as transaction_count
         FROM expenses
         WHERE user_id = ? {date_filter}
-    """, params_base)
+    """,
+        params_base,
+    )
 
     row = cursor.fetchone()
     total_spent = row["total_spent"]
     transaction_count = row["transaction_count"]
 
     # Get top category (category with highest total amount)
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT category
         FROM expenses
         WHERE user_id = ? {date_filter}
         GROUP BY category
         ORDER BY SUM(amount) DESC
         LIMIT 1
-    """, params_base)
+    """,
+        params_base,
+    )
 
     top_row = cursor.fetchone()
     top_category = top_row["category"] if top_row else "—"
@@ -88,7 +115,7 @@ def get_summary_stats(user_id, date_from=None, date_to=None):
     return {
         "total_spent": total_spent,
         "transaction_count": transaction_count,
-        "top_category": top_category
+        "top_category": top_category,
     }
 
 
@@ -109,22 +136,27 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
         params = [user_id, date_from, date_to]
     params.append(limit)
 
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT date, description, category, amount
         FROM expenses
         WHERE user_id = ? {date_filter}
         ORDER BY date DESC, created_at DESC
         LIMIT ?
-    """, params)
+    """,
+        params,
+    )
 
     transactions = []
     for row in cursor.fetchall():
-        transactions.append({
-            "date": row["date"],
-            "description": row["description"],
-            "category": row["category"],
-            "amount": row["amount"]
-        })
+        transactions.append(
+            {
+                "date": row["date"],
+                "description": row["description"],
+                "category": row["category"],
+                "amount": row["amount"],
+            }
+        )
 
     conn.close()
     return transactions
@@ -148,7 +180,8 @@ def get_category_breakdown(user_id, date_from=None, date_to=None):
         params_base = [user_id, date_from, date_to]
 
     # Single query: CTE computes the overall total; main SELECT does per-category breakdown
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         WITH totals AS (
             SELECT COALESCE(SUM(amount), 0) as grand_total
             FROM expenses
@@ -162,7 +195,9 @@ def get_category_breakdown(user_id, date_from=None, date_to=None):
         WHERE user_id = ? {date_filter}
         GROUP BY category
         ORDER BY amount DESC
-    """, params_base + params_base)
+    """,
+        params_base + params_base,
+    )
 
     rows = cursor.fetchall()
     conn.close()
@@ -175,10 +210,7 @@ def get_category_breakdown(user_id, date_from=None, date_to=None):
     raw_percentages = []
 
     for row in rows:
-        categories.append({
-            "name": row["category"],
-            "amount": row["amount"]
-        })
+        categories.append({"name": row["category"], "amount": row["amount"]})
         raw_pct = (row["amount"] / total) * 100
         raw_percentages.append((raw_pct, len(categories) - 1))
 

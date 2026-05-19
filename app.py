@@ -1,8 +1,42 @@
+import math
 import os
 from datetime import date as date_cls, datetime, timedelta
-from flask import Flask, abort, render_template, request, redirect, url_for, session, flash
-from database.db import get_db, init_db, seed_db, create_user, get_user_by_email, get_user_by_id, verify_password
-from database.queries import get_user_profile, get_summary_stats, get_recent_transactions, get_category_breakdown
+from flask import (
+    Flask,
+    abort,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+)
+from database.db import (
+    get_db,
+    init_db,
+    seed_db,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+    verify_password,
+)
+from database.queries import (
+    get_user_profile,
+    get_summary_stats,
+    get_recent_transactions,
+    get_category_breakdown,
+    insert_expense,
+)
+
+EXPENSE_CATEGORIES = [
+    "Food",
+    "Transport",
+    "Bills",
+    "Health",
+    "Entertainment",
+    "Shopping",
+    "Other",
+]
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
@@ -11,6 +45,7 @@ app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
 # ------------------------------------------------------------------ #
 # Routes                                                              #
 # ------------------------------------------------------------------ #
+
 
 @app.route("/")
 def landing():
@@ -86,6 +121,7 @@ def login():
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
 
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -101,7 +137,7 @@ def profile():
 
     # --- Date param validation ---
     raw_from = request.args.get("date_from", "").strip()
-    raw_to   = request.args.get("date_to",   "").strip()
+    raw_to = request.args.get("date_to", "").strip()
 
     date_from = date_to = None
     if raw_from:
@@ -173,11 +209,14 @@ def profile():
     if not user:
         abort(404)
 
-    stats        = get_summary_stats(user_id, date_from, date_to)
-    transactions = get_recent_transactions(user_id, limit=10, date_from=date_from, date_to=date_to)
-    categories   = get_category_breakdown(user_id, date_from, date_to)
+    stats = get_summary_stats(user_id, date_from, date_to)
+    transactions = get_recent_transactions(
+        user_id, limit=10, date_from=date_from, date_to=date_to
+    )
+    categories = get_category_breakdown(user_id, date_from, date_to)
 
-    return render_template("profile.html",
+    return render_template(
+        "profile.html",
         user=user,
         stats=stats,
         transactions=transactions,
@@ -189,9 +228,64 @@ def profile():
     )
 
 
-@app.route("/expenses/add")
+@app.route("/expenses/add", methods=["GET", "POST"])
 def add_expense():
-    return "Add expense — coming in Step 7"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+
+    if request.method == "POST":
+        amount_raw = request.form.get("amount", "").strip()
+        category = request.form.get("category", "")
+        date_str = request.form.get("date", "").strip()
+        description_raw = request.form.get("description", "").strip()
+        description = description_raw or None
+
+        form_values = {
+            "amount": amount_raw,
+            "category": category,
+            "date": date_str,
+            "description": description_raw,
+        }
+
+        try:
+            amount = float(amount_raw)
+            if not math.isfinite(amount) or amount <= 0:
+                raise ValueError
+        except ValueError:
+            flash("Amount must be a positive number.", "error")
+            return render_template(
+                "add_expense.html", categories=EXPENSE_CATEGORIES, form=form_values
+            )
+
+        if category not in EXPENSE_CATEGORIES:
+            flash("Please select a valid category.", "error")
+            return render_template(
+                "add_expense.html", categories=EXPENSE_CATEGORIES, form=form_values
+            )
+
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            flash("Please provide a valid date (YYYY-MM-DD).", "error")
+            return render_template(
+                "add_expense.html", categories=EXPENSE_CATEGORIES, form=form_values
+            )
+
+        insert_expense(user_id, amount, category, date_str, description)
+        flash("Expense added successfully.", "success")
+        return redirect(url_for("profile"))
+
+    form_values = {
+        "amount": "",
+        "category": "",
+        "date": date_cls.today().isoformat(),
+        "description": "",
+    }
+    return render_template(
+        "add_expense.html", categories=EXPENSE_CATEGORIES, form=form_values
+    )
 
 
 @app.route("/expenses/<int:id>/edit")

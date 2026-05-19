@@ -61,7 +61,10 @@
 
         <!-- Transaction History Table -->
         <div class="transactions-card">
-            <h3 class="card-heading">Recent Transactions</h3>
+            <div class="transactions-header">
+                <h3 class="card-heading">Recent Transactions</h3>
+                <a href="{{ url_for('add_expense') }}" class="btn-primary">+ Add Expense</a>
+            </div>
             <table class="transactions-table">
                 <thead>
                     <tr>
