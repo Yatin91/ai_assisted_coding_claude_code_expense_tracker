@@ -80,6 +80,28 @@ def update_expense(expense_id, user_id, amount, category, date, description):
     return rowcount
 
 
+def delete_expense_by_id(expense_id, user_id):
+    """
+    Delete an expense owned by `user_id`.
+    The user_id guard in the WHERE clause is defence-in-depth — the route also
+    performs an ownership check before calling this.
+    Returns the number of rows deleted (0 if the row doesn't exist or isn't owned).
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE FROM expenses
+         WHERE id = ? AND user_id = ?
+    """,
+        (expense_id, user_id),
+    )
+    conn.commit()
+    rowcount = cursor.rowcount
+    conn.close()
+    return rowcount
+
+
 def get_user_profile(user_id):
     """
     Fetch user profile data by ID.
